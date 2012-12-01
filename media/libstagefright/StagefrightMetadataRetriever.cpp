@@ -36,12 +36,6 @@ Copyright (c) 2012, Code Aurora Forum. All rights reserved.
 
 namespace android {
 
-#ifdef QCOM_HARDWARE
-static const int OMX_QCOM_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03;
-static const int OMX_QCOM_COLOR_FormatYVU420SemiPlanar = 0x7FA30C00;
-static const int OMX_QCOM_COLOR_FormatYVU420PackedSemiPlanar32m4ka = 0x7FA30C01;
-#endif
-
 StagefrightMetadataRetriever::StagefrightMetadataRetriever()
     : mParsedMetaData(false),
       mAlbumArt(NULL) {
