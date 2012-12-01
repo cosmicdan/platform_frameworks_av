@@ -58,6 +58,33 @@ Copyright (c) 2012, Code Aurora Forum. All rights reserved.
 
 namespace android {
 
+#ifdef EXYNOS4_ENHANCEMENTS
+static const int OMX_SEC_COLOR_FormatNV12TPhysicalAddress = 0x7F000001;
+static const int OMX_SEC_COLOR_FormatNV12LPhysicalAddress = 0x7F000002;
+static const int OMX_SEC_COLOR_FormatNV12LVirtualAddress = 0x7F000003;
+static const int OMX_SEC_COLOR_FormatNV12Tiled = 0x7FC00002;
+#ifdef S3D_SUPPORT
+static const int OMX_SEC_COLOR_FormatNV12Tiled_SBS_LR = 0x7FC00003;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_SBS_RL = 0x7FC00004;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_TB_LR = 0x7FC00005;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_TB_RL = 0x7FC00006;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_LR = 0x7FC00007;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_RL = 0x7FC00008;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_LR = 0x7FC00009;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_RL = 0x7FC0000A;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_SBS_LR = 0x7FC0000B;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_SBS_RL = 0x7FC0000C;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_TB_LR = 0x7FC0000D;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_TB_RL = 0x7FC0000E;
+#endif
+#endif
+
+#ifdef QCOM_HARDWARE
+static const int OMX_QCOM_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka = 0x7FA30C03;
+static const int OMX_QCOM_COLOR_FormatYVU420SemiPlanar = 0x7FA30C00;
+static const int OMX_QCOM_COLOR_FormatYVU420PackedSemiPlanar32m4ka = 0x7FA30C01;
+#endif
+
 // Treat time out as an error if we have not received any output
 // buffers after 3 seconds.
 const static int64_t kBufferFilledEventTimeOutNs = 3000000000LL;
@@ -961,6 +988,13 @@ status_t OMXCodec::setVideoPortFormatType(
     return err;
 }
 
+#if defined(EXYNOS4_ENHANCEMENTS)
+#define ALIGN_TO_8KB(x)   ((((x) + (1 << 13) - 1) >> 13) << 13)
+#define ALIGN_TO_32B(x)   ((((x) + (1 <<  5) - 1) >>  5) <<  5)
+#define ALIGN_TO_128B(x)  ((((x) + (1 <<  7) - 1) >>  7) <<  7)
+#define ALIGN(x, a)       (((x) + (a) - 1) & ~((a) - 1))
+#endif
+
 static size_t getFrameSize(
         OMX_COLOR_FORMATTYPE colorFormat, int32_t width, int32_t height) {
     switch (colorFormat) {
@@ -980,7 +1014,21 @@ static size_t getFrameSize(
         * this part in the future
         */
         case OMX_COLOR_FormatAndroidOpaque:
+#ifdef EXYNOS4_ENHANCEMENTS
+        case OMX_SEC_COLOR_FormatNV12TPhysicalAddress:
+        case OMX_SEC_COLOR_FormatNV12LPhysicalAddress:
+#endif
             return (width * height * 3) / 2;
+
+#ifdef EXYNOS4_ENHANCEMENTS
+        case OMX_SEC_COLOR_FormatNV12LVirtualAddress:
+            return ALIGN((ALIGN(width, 16) * ALIGN(height, 16)), 2048) + ALIGN((ALIGN(width, 16) * ALIGN(height >> 1, 8)), 2048);
+
+        case OMX_SEC_COLOR_FormatNV12Tiled:
+            static unsigned int frameBufferYSise = ALIGN_TO_8KB(ALIGN_TO_128B(width) * ALIGN_TO_32B(height));
+            static unsigned int frameBufferUVSise = ALIGN_TO_8KB(ALIGN_TO_128B(width) * ALIGN_TO_32B(height/2));
+            return (frameBufferYSise + frameBufferUVSise);
+#endif
 
         default:
             CHECK(!"Should not be here. Unsupported color format.");
@@ -1534,12 +1582,16 @@ status_t OMXCodec::setVideoOutputFormat(
         CHECK(format.eColorFormat == OMX_COLOR_FormatYUV420Planar
                || format.eColorFormat == OMX_COLOR_FormatYUV420SemiPlanar
                || format.eColorFormat == OMX_COLOR_FormatCbYCrY
+#ifdef EXYNOS4_ENHANCEMENTS
+               || format.eColorFormat == OMX_SEC_COLOR_FormatNV12TPhysicalAddress
+               || format.eColorFormat == OMX_SEC_COLOR_FormatNV12Tiled
+#endif
                || format.eColorFormat == OMX_TI_COLOR_FormatYUV420PackedSemiPlanar
                || format.eColorFormat == OMX_QCOM_COLOR_FormatYVU420SemiPlanar
 #ifdef QCOM_HARDWARE
                || format.eColorFormat == OMX_QCOM_COLOR_FormatYVU420PackedSemiPlanar32m4ka
                || format.eColorFormat == OMX_QCOM_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka
-               || format.eColorFormat == OMX_QCOM_COLOR_FormatYUV420PackedSemiPlanar32m
+               //|| format.eColorFormat == OMX_QCOM_COLOR_FormatYUV420PackedSemiPlanar32m
 #endif
                );
 
@@ -1574,7 +1626,11 @@ status_t OMXCodec::setVideoOutputFormat(
 
 #if 1
     // XXX Need a (much) better heuristic to compute input buffer sizes.
+#ifdef EXYNOS4_ENHANCEMENTS
+    const size_t X = 64 * 8 * 1024;
+#else
     const size_t X = 64 * 1024;
+#endif
     if (def.nBufferSize < X) {
         def.nBufferSize = X;
     }
@@ -2222,8 +2278,14 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
     }
 
     ALOGV("native_window_set_usage usage=0x%lx", usage);
+#ifdef BOARD_USE_SAMSUNG_V4L2_ION
+    err = native_window_set_usage(
+            mNativeWindow.get(), usage | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP
+                                        | GRALLOC_USAGE_HW_ION | GRALLOC_USAGE_HWC_HWOVERLAY);
+#else
     err = native_window_set_usage(
             mNativeWindow.get(), usage | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP);
+#endif
     if (err != 0) {
         ALOGE("native_window_set_usage failed: %s (%d)", strerror(-err), -err);
         return err;
@@ -3680,6 +3742,15 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
                 if (def.eDomain == OMX_PortDomainVideo) {
                     OMX_VIDEO_PORTDEFINITIONTYPE *videoDef = &def.format.video;
                     switch (videoDef->eColorFormat) {
+#ifdef EXYNOS4_ENHANCEMENTS
+                    case OMX_SEC_COLOR_FormatNV12LVirtualAddress: {
+                        CHECK(srcBuffer->data() != NULL);
+                        void *pSharedMem = (void *)(srcBuffer->data());
+                        memcpy((uint8_t *)info->mData + offset,
+                                (const void *)&pSharedMem, sizeof(void *));
+                        break;
+                    }
+#endif
                     default:
                         CHECK(srcBuffer->data() != NULL);
                         memcpy((uint8_t *)info->mData + offset,
@@ -4876,7 +4947,22 @@ static const char *colorFormatString(OMX_COLOR_FORMATTYPE type) {
 
     if (type == OMX_TI_COLOR_FormatYUV420PackedSemiPlanar) {
         return "OMX_TI_COLOR_FormatYUV420PackedSemiPlanar";
-    } else if (type == OMX_QCOM_COLOR_FormatYVU420SemiPlanar) {
+    }
+#ifdef EXYNOS4_ENHANCEMENTS
+    if (type == OMX_SEC_COLOR_FormatNV12TPhysicalAddress) {
+        return "OMX_SEC_COLOR_FormatNV12TPhysicalAddress";
+    }
+    if (type == OMX_SEC_COLOR_FormatNV12LPhysicalAddress) {
+        return "OMX_SEC_COLOR_FormatNV12LPhysicalAddress";
+    }
+    if (type == OMX_SEC_COLOR_FormatNV12LVirtualAddress) {
+        return "OMX_SEC_COLOR_FormatNV12LVirtualAddress";
+    }
+    if (type == OMX_SEC_COLOR_FormatNV12Tiled) {
+        return "OMX_SEC_COLOR_FormatNV12Tiled";
+    }
+#endif
+    else if (type == OMX_QCOM_COLOR_FormatYVU420SemiPlanar) {
         return "OMX_QCOM_COLOR_FormatYVU420SemiPlanar";
     } else if (type < 0 || (size_t)type >= numNames) {
         return "UNKNOWN";
